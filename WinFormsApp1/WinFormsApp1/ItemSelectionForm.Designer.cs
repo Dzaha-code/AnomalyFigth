@@ -15,134 +15,151 @@ namespace WinFormsApp1
 
         private void InitializeComponent()
         {
-            this.labelTitle = new System.Windows.Forms.Label();
+            this.lblTitle = new System.Windows.Forms.Label();
             this.lblInstruction = new System.Windows.Forms.Label();
-            this.checkedListBoxItems = new System.Windows.Forms.CheckedListBox();
-            this.lblItemCount = new System.Windows.Forms.Label();
-            this.btnSelect = new System.Windows.Forms.Button();
-            this.btnStart = new System.Windows.Forms.Button();
-            this.btnBack = new System.Windows.Forms.Button();
-            this.lblPlayer1Items = new System.Windows.Forms.Label();
-            this.lblPlayer2Items = new System.Windows.Forms.Label();
+            this.lblCounter = new System.Windows.Forms.Label();
+            this.flowPanelItems = new System.Windows.Forms.FlowLayoutPanel();
+            this.panelBottom = new System.Windows.Forms.Panel();
+            this.btnConfirm = new WinFormsApp1.UI.RPGButton();
+            this.btnStartBattle = new WinFormsApp1.UI.RPGButton();
+            this.btnBack = new WinFormsApp1.UI.RPGButton();
+            this.lblPlayer1Status = new System.Windows.Forms.Label();
+            this.lblPlayer2Status = new System.Windows.Forms.Label();
+            this.panelBottom.SuspendLayout();
             this.SuspendLayout();
 
-            // labelTitle
-            this.labelTitle.AutoSize = true;
-            this.labelTitle.Font = new System.Drawing.Font("Arial", 16F, System.Drawing.FontStyle.Bold);
-            this.labelTitle.ForeColor = System.Drawing.Color.Navy;
-            this.labelTitle.Location = new System.Drawing.Point(20, 10);
-            this.labelTitle.Name = "labelTitle";
-            this.labelTitle.Size = new System.Drawing.Size(350, 24);
-            this.labelTitle.TabIndex = 0;
-            this.labelTitle.Text = "Pilih 2 Item Support Untuk Tiap Player";
+            // ===== TITLE =====
+            this.lblTitle.Font = new System.Drawing.Font("Segoe UI", 16F, System.Drawing.FontStyle.Bold);
+            this.lblTitle.ForeColor = System.Drawing.Color.FromArgb(245, 166, 35); // Gold
+            this.lblTitle.Location = new System.Drawing.Point(12, 10);
+            this.lblTitle.Name = "lblTitle";
+            this.lblTitle.Size = new System.Drawing.Size(860, 32);
+            this.lblTitle.TabIndex = 0;
+            this.lblTitle.Text = "🎒 PEMILIHAN ITEM SUPPORT 🎒";
+            this.lblTitle.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
 
-            // lblInstruction
-            this.lblInstruction.AutoSize = true;
-            this.lblInstruction.Font = new System.Drawing.Font("Arial", 10F);
-            this.lblInstruction.ForeColor = System.Drawing.Color.Blue;
-            this.lblInstruction.Location = new System.Drawing.Point(20, 40);
+            // ===== INSTRUCTION =====
+            this.lblInstruction.Font = new System.Drawing.Font("Segoe UI", 11F, System.Drawing.FontStyle.Bold);
+            this.lblInstruction.ForeColor = System.Drawing.Color.FromArgb(233, 69, 96); // Merah-pink
+            this.lblInstruction.Location = new System.Drawing.Point(15, 45);
             this.lblInstruction.Name = "lblInstruction";
-            this.lblInstruction.Size = new System.Drawing.Size(200, 16);
+            this.lblInstruction.Size = new System.Drawing.Size(550, 25);
             this.lblInstruction.TabIndex = 1;
-            this.lblInstruction.Text = "Pilih 2 item untuk Player 1...";
+            this.lblInstruction.Text = "👉 Giliran Player 1: Pilih 2 Item Support";
 
-            // checkedListBoxItems
-            this.checkedListBoxItems.Font = new System.Drawing.Font("Arial", 10F);
-            this.checkedListBoxItems.FormattingEnabled = true;
-            this.checkedListBoxItems.Location = new System.Drawing.Point(20, 65);
-            this.checkedListBoxItems.Name = "checkedListBoxItems";
-            this.checkedListBoxItems.Size = new System.Drawing.Size(540, 180);
-            this.checkedListBoxItems.TabIndex = 2;
+            // ===== COUNTER BESAR (ANIMATED) =====
+            this.lblCounter.Font = new System.Drawing.Font("Consolas", 14F, System.Drawing.FontStyle.Bold);
+            this.lblCounter.ForeColor = System.Drawing.Color.FromArgb(245, 166, 35); // Gold
+            this.lblCounter.Location = new System.Drawing.Point(670, 42);
+            this.lblCounter.Name = "lblCounter";
+            this.lblCounter.Size = new System.Drawing.Size(200, 28);
+            this.lblCounter.TabIndex = 2;
+            this.lblCounter.Text = "TERPILIH: [ 0 / 2 ]";
+            this.lblCounter.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
 
-            // lblItemCount
-            this.lblItemCount.AutoSize = true;
-            this.lblItemCount.Font = new System.Drawing.Font("Arial", 9F);
-            this.lblItemCount.Location = new System.Drawing.Point(20, 250);
-            this.lblItemCount.Name = "lblItemCount";
-            this.lblItemCount.Size = new System.Drawing.Size(80, 15);
-            this.lblItemCount.TabIndex = 10;
-            this.lblItemCount.Text = "Total Item: 0";
+            // ===== FLOW PANEL ITEM CARDS (GRID) =====
+            this.flowPanelItems.AutoScroll = true;
+            this.flowPanelItems.BackColor = System.Drawing.Color.FromArgb(22, 33, 62); // #16213E
+            this.flowPanelItems.Location = new System.Drawing.Point(15, 75);
+            this.flowPanelItems.Name = "flowPanelItems";
+            this.flowPanelItems.Padding = new System.Windows.Forms.Padding(10);
+            this.flowPanelItems.Size = new System.Drawing.Size(855, 340);
+            this.flowPanelItems.TabIndex = 3;
 
-            // btnSelect
-            this.btnSelect.Font = new System.Drawing.Font("Arial", 10F);
-            this.btnSelect.Location = new System.Drawing.Point(20, 275);
-            this.btnSelect.Name = "btnSelect";
-            this.btnSelect.Size = new System.Drawing.Size(150, 35);
-            this.btnSelect.TabIndex = 3;
-            this.btnSelect.Text = "Pilih Untuk Player 1";
-            this.btnSelect.UseVisualStyleBackColor = true;
-            this.btnSelect.Click += new System.EventHandler(this.btnSelect_Click);
+            // ===== PANEL BOTTOM =====
+            this.panelBottom.BackColor = System.Drawing.Color.FromArgb(22, 33, 62);
+            this.panelBottom.Location = new System.Drawing.Point(15, 425);
+            this.panelBottom.Name = "panelBottom";
+            this.panelBottom.Size = new System.Drawing.Size(855, 110);
+            this.panelBottom.TabIndex = 4;
+            this.panelBottom.Paint += new System.Windows.Forms.PaintEventHandler(this.panelBottom_Paint);
 
-            // lblPlayer1Items
-            this.lblPlayer1Items.AutoSize = true;
-            this.lblPlayer1Items.Font = new System.Drawing.Font("Arial", 9F);
-            this.lblPlayer1Items.ForeColor = System.Drawing.Color.DarkBlue;
-            this.lblPlayer1Items.Location = new System.Drawing.Point(20, 315);
-            this.lblPlayer1Items.Name = "lblPlayer1Items";
-            this.lblPlayer1Items.Size = new System.Drawing.Size(130, 15);
-            this.lblPlayer1Items.TabIndex = 4;
-            this.lblPlayer1Items.Text = "Player 1: 0 item dipilih";
+            // lblPlayer1Status
+            this.lblPlayer1Status.AutoSize = true;
+            this.lblPlayer1Status.Font = new System.Drawing.Font("Segoe UI", 9.5F, System.Drawing.FontStyle.Bold);
+            this.lblPlayer1Status.ForeColor = System.Drawing.Color.FromArgb(168, 178, 216);
+            this.lblPlayer1Status.Location = new System.Drawing.Point(20, 15);
+            this.lblPlayer1Status.Name = "lblPlayer1Status";
+            this.lblPlayer1Status.Size = new System.Drawing.Size(185, 17);
+            this.lblPlayer1Status.TabIndex = 0;
+            this.lblPlayer1Status.Text = "Player 1: (Belum konfirmasi)";
 
-            // lblPlayer2Items
-            this.lblPlayer2Items.AutoSize = true;
-            this.lblPlayer2Items.Font = new System.Drawing.Font("Arial", 9F);
-            this.lblPlayer2Items.ForeColor = System.Drawing.Color.Purple;
-            this.lblPlayer2Items.Location = new System.Drawing.Point(20, 335);
-            this.lblPlayer2Items.Name = "lblPlayer2Items";
-            this.lblPlayer2Items.Size = new System.Drawing.Size(130, 15);
-            this.lblPlayer2Items.TabIndex = 5;
-            this.lblPlayer2Items.Text = "Player 2: 0 item dipilih";
+            // lblPlayer2Status
+            this.lblPlayer2Status.AutoSize = true;
+            this.lblPlayer2Status.Font = new System.Drawing.Font("Segoe UI", 9.5F, System.Drawing.FontStyle.Bold);
+            this.lblPlayer2Status.ForeColor = System.Drawing.Color.FromArgb(168, 178, 216);
+            this.lblPlayer2Status.Location = new System.Drawing.Point(20, 45);
+            this.lblPlayer2Status.Name = "lblPlayer2Status";
+            this.lblPlayer2Status.Size = new System.Drawing.Size(185, 17);
+            this.lblPlayer2Status.TabIndex = 1;
+            this.lblPlayer2Status.Text = "Player 2: (Belum konfirmasi)";
 
-            // btnStart
-            this.btnStart.Font = new System.Drawing.Font("Arial", 11F, System.Drawing.FontStyle.Bold);
-            this.btnStart.ForeColor = System.Drawing.Color.Green;
-            this.btnStart.Location = new System.Drawing.Point(180, 275);
-            this.btnStart.Name = "btnStart";
-            this.btnStart.Size = new System.Drawing.Size(150, 35);
-            this.btnStart.TabIndex = 6;
-            this.btnStart.Text = "Mulai Battle";
-            this.btnStart.UseVisualStyleBackColor = true;
-            this.btnStart.Enabled = false;
-            this.btnStart.Click += new System.EventHandler(this.btnStart_Click);
+            // btnConfirm
+            this.btnConfirm.Font = new System.Drawing.Font("Segoe UI", 10.5F, System.Drawing.FontStyle.Bold);
+            this.btnConfirm.Location = new System.Drawing.Point(400, 20);
+            this.btnConfirm.Name = "btnConfirm";
+            this.btnConfirm.Size = new System.Drawing.Size(210, 65);
+            this.btnConfirm.TabIndex = 2;
+            this.btnConfirm.Text = "✓ KONFIRMASI (P1)";
+            this.btnConfirm.Click += new System.EventHandler(this.btnConfirm_Click);
+
+            // btnStartBattle
+            this.btnStartBattle.Enabled = false;
+            this.btnStartBattle.Font = new System.Drawing.Font("Segoe UI", 11F, System.Drawing.FontStyle.Bold);
+            this.btnStartBattle.Location = new System.Drawing.Point(625, 20);
+            this.btnStartBattle.Name = "btnStartBattle";
+            this.btnStartBattle.Size = new System.Drawing.Size(215, 65);
+            this.btnStartBattle.TabIndex = 3;
+            this.btnStartBattle.Text = "⚔️ MULAI BATTLE!";
+            this.btnStartBattle.Click += new System.EventHandler(this.btnStartBattle_Click);
 
             // btnBack
-            this.btnBack.Font = new System.Drawing.Font("Arial", 10F);
-            this.btnBack.Location = new System.Drawing.Point(440, 275);
-            this.btnBack.Size = new System.Drawing.Size(120, 35);
-            this.btnBack.TabIndex = 7;
-            this.btnBack.Text = "Kembali";
-            this.btnBack.UseVisualStyleBackColor = true;
+            this.btnBack.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
+            this.btnBack.Location = new System.Drawing.Point(20, 75);
+            this.btnBack.Name = "btnBack";
+            this.btnBack.Size = new System.Drawing.Size(110, 28);
+            this.btnBack.TabIndex = 4;
+            this.btnBack.Text = "↩️ KEMBALI";
             this.btnBack.Click += new System.EventHandler(this.btnBack_Click);
 
-            // ItemSelectionForm
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
+            this.panelBottom.Controls.Add(this.lblPlayer1Status);
+            this.panelBottom.Controls.Add(this.lblPlayer2Status);
+            this.panelBottom.Controls.Add(this.btnConfirm);
+            this.panelBottom.Controls.Add(this.btnStartBattle);
+            this.panelBottom.Controls.Add(this.btnBack);
+
+            // ===== FORM SETTINGS =====
+            this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(580, 360);
-            this.Controls.Add(this.labelTitle);
+            this.BackColor = System.Drawing.Color.FromArgb(26, 26, 46); // #1A1A2E
+            this.ClientSize = new System.Drawing.Size(884, 545);
+            this.Controls.Add(this.lblTitle);
             this.Controls.Add(this.lblInstruction);
-            this.Controls.Add(this.checkedListBoxItems);
-            this.Controls.Add(this.lblItemCount);
-            this.Controls.Add(this.btnSelect);
-            this.Controls.Add(this.lblPlayer1Items);
-            this.Controls.Add(this.lblPlayer2Items);
-            this.Controls.Add(this.btnStart);
-            this.Controls.Add(this.btnBack);
+            this.Controls.Add(this.lblCounter);
+            this.Controls.Add(this.flowPanelItems);
+            this.Controls.Add(this.panelBottom);
+            this.DoubleBuffered = true;
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
+            this.MaximizeBox = false;
             this.Name = "ItemSelectionForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "Pemilihan Item Support";
+            this.Text = "Anomaly Versus - Pemilihan Item";
             this.Load += new System.EventHandler(this.ItemSelectionForm_Load);
+            this.Paint += new System.Windows.Forms.PaintEventHandler(this.ItemSelectionForm_Paint);
+            this.panelBottom.ResumeLayout(false);
+            this.panelBottom.PerformLayout();
             this.ResumeLayout(false);
-            this.PerformLayout();
         }
 
-        private System.Windows.Forms.Label labelTitle;
+        private System.Windows.Forms.Label lblTitle;
         private System.Windows.Forms.Label lblInstruction;
-        private System.Windows.Forms.CheckedListBox checkedListBoxItems;
-        private System.Windows.Forms.Label lblItemCount;
-        private System.Windows.Forms.Button btnSelect;
-        private System.Windows.Forms.Button btnStart;
-        private System.Windows.Forms.Button btnBack;
-        private System.Windows.Forms.Label lblPlayer1Items;
-        private System.Windows.Forms.Label lblPlayer2Items;
+        private System.Windows.Forms.Label lblCounter;
+        private System.Windows.Forms.FlowLayoutPanel flowPanelItems;
+        private System.Windows.Forms.Panel panelBottom;
+        private System.Windows.Forms.Label lblPlayer1Status;
+        private System.Windows.Forms.Label lblPlayer2Status;
+        private WinFormsApp1.UI.RPGButton btnConfirm;
+        private WinFormsApp1.UI.RPGButton btnStartBattle;
+        private WinFormsApp1.UI.RPGButton btnBack;
     }
 }

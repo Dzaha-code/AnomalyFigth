@@ -3,7 +3,7 @@ using System.IO;
 using System.Media;
 using System.Threading.Tasks;
 
-namespace WinFormsApp1
+namespace WinFormsApp1.UI
 {
     /// <summary>
     /// AudioManager.cs — Static audio controller untuk pemutaran BGM (looping) dan SFX (non-blocking).
@@ -15,7 +15,7 @@ namespace WinFormsApp1
         private static string? currentBgmFile;
 
         /// <summary>
-        /// Putar BGM secara looping dari folder Assets/Audio/BGM/ atau Assets/BGM/
+        /// Putar BGM secara looping dari folder Assets/Audio/BGM/
         /// </summary>
         public static void PlayBGM(string fileName)
         {
@@ -23,11 +23,12 @@ namespace WinFormsApp1
             {
                 if (currentBgmFile == fileName && bgmPlayer != null)
                 {
-                    return;
+                    return; // BGM yang sama sudah sedang berputar
                 }
 
                 StopBGM();
 
+                // Cek kemungkinan path (Assets/Audio/BGM atau Assets/BGM)
                 string fullPath = Path.Combine(BaseAudioPath, "BGM", fileName);
                 if (!File.Exists(fullPath))
                 {
@@ -73,7 +74,7 @@ namespace WinFormsApp1
         }
 
         /// <summary>
-        /// Putar SFX secara non-blocking di background thread dari folder Assets/Audio/SFX/ atau Assets/SFX/
+        /// Putar SFX secara non-blocking di background thread dari folder Assets/Audio/SFX/
         /// </summary>
         public static void PlaySFX(string fileName)
         {
@@ -111,6 +112,8 @@ namespace WinFormsApp1
         /// </summary>
         public static void SetBGMVolume(double volume)
         {
+            // SoundPlayer native Windows tidak menyediakan direct API volume,
+            // method ini disediakan untuk menjaga signature interface tetap kompatibel.
         }
     }
 }

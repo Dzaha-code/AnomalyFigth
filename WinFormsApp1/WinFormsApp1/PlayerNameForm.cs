@@ -1,89 +1,180 @@
 using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 using WinFormsApp1.DataAccess;
 
 namespace WinFormsApp1
 {
     /// <summary>
-    /// PlayerNameForm.cs
-    /// Form untuk input nama Player 1 dan Player 2
-    /// Menggunakan PlayerRepository.GetOrCreatePlayer() untuk simpan data ke database
+    /// PlayerNameForm.cs — Form Input Nama Pemain dengan gaya RPG Dialog Box & Animasi Slide-In.
     /// </summary>
     public partial class PlayerNameForm : Form
     {
+        private Point targetDialogPos;
+        private System.Windows.Forms.Timer slideTimer = null!;
+
         public PlayerNameForm()
         {
             InitializeComponent();
+            SetStyle(ControlStyles.OptimizedDoubleBuffer |
+                     ControlStyles.AllPaintingInWmPaint |
+                     ControlStyles.UserPaint, true);
         }
 
         private void PlayerNameForm_Load(object sender, EventArgs e)
         {
-            this.Text = "Input Nama Pemain";
-            GameSession.ResetSession(); // Reset session saat form dimulai
+            GameSession.ResetSession();
+
+            // Animasi Slide-In dari bawah layar
+            targetDialogPos = panelDialog.Location;
+            panelDialog.Location = new Point(targetDialogPos.X, this.Height + 50);
+
+            slideTimer = new System.Windows.Forms.Timer { Interval = 16 };
+            slideTimer.Tick += (s, ev) =>
+            {
+                // Easing formula: posisi += (target - posisi) * 0.2
+                int newY = panelDialog.Location.Y + (int)((targetDialogPos.Y - panelDialog.Location.Y) * 0.25f);
+                panelDialog.Location = new Point(targetDialogPos.X, newY);
+
+                if (Math.Abs(panelDialog.Location.Y - targetDialogPos.Y) < 3)
+                {
+                    panelDialog.Location = targetDialogPos;
+                    slideTimer.Stop();
+                    slideTimer.Dispose();
+                }
+            };
+            slideTimer.Start();
         }
 
-        /// <summary>
-        /// Event handler ketika klik tombol "Lanjut ke Pemilihan Anomaly"
-        /// Validasi input, simpan ke GameSession, dan buka AnomalySelectionForm
-        /// </summary>
+        // ===== CUSTOM PAINT: BACKGROUND GRADIENT =====
+
+        private void PlayerNameForm_Paint(object sender, PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            Color topBg = Color.FromArgb(26, 26, 46);    // #1A1A2E
+            Color bottomBg = Color.FromArgb(15, 52, 96); // #0F3460
+            using (LinearGradientBrush brush = new LinearGradientBrush(ClientRectangle, topBg, bottomBg, LinearGradientMode.Vertical))
+            {
+                g.FillRectangle(brush, ClientRectangle);
+            }
+        }
+
+        // ===== CUSTOM PAINT: DIALOG BOX RPG (PANEL) =====
+
+        private void panelDialog_Paint(object sender, PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            Rectangle rect = new Rectangle(0, 0, panelDialog.Width - 1, panelDialog.Height - 1);
+
+            // 1. Background Gradient Card (#16213E -> #0F3460)
+            using (LinearGradientBrush brush = new LinearGradientBrush(
+                rect,
+                Color.FromArgb(22, 33, 62),   // #16213E
+                Color.FromArgb(15, 52, 96),   // #0F3460
+                LinearGradientMode.Vertical))
+            {
+                g.FillRectangle(brush, rect);
+            }
+
+            // 2. Border Card
+            using (Pen borderPen = new Pen(Color.FromArgb(15, 52, 96), 2))
+            {
+                g.DrawRectangle(borderPen, rect);
+            }
+
+            // 3. Accent Bar Kiri (#E94560, lebar 5px)
+            using (SolidBrush accentBrush = new SolidBrush(Color.FromArgb(233, 69, 96)))
+            {
+                g.FillRectangle(accentBrush, 0, 0, 5, panelDialog.Height);
+            }
+        }
+
+        // ===== EFEK SHAKE SAAT VALIDASI GAGAL =====
+
+        private void ShakeError(Control control, int durationMs = 300)
+        {
+            Point originalPos = control.Location;
+            int elapsed = 0;
+            System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer { Interval = 16 };
+            timer.Tick += (s, e) =>
+            {
+                elapsed += 16;
+                int offset = (elapsed % 60 < 30) ? 6 : -6;
+                control.Location = new Point(originalPos.X + offset, originalPos.Y);
+                if (elapsed >= durationMs)
+                {
+                    control.Location = originalPos;
+                    timer.Stop();
+                    timer.Dispose();
+                }
+            };
+            timer.Start();
+        }
+
+        // ===== BUTTON HANDLERS =====
+
         private void btnNext_Click(object sender, EventArgs e)
         {
-            AudioManager.PlaySFX("sfx_click.wav");
-
             string player1Name = txtPlayer1Name.Text.Trim();
             string player2Name = txtPlayer2Name.Text.Trim();
 
-            // VALIDASI: Nama tidak boleh kosong
+            // Validasi Input
             if (string.IsNullOrEmpty(player1Name))
             {
-                MessageBox.Show("Nama Player 1 tidak boleh kosong!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                lblError.Text = "⚠️ Nama Player 1 tidak boleh kosong!";
+                AudioManager.PlaySFX("sfx_hit.wav");
+                ShakeError(txtPlayer1Name);
                 return;
             }
 
             if (string.IsNullOrEmpty(player2Name))
             {
-                MessageBox.Show("Nama Player 2 tidak boleh kosong!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                lblError.Text = "⚠️ Nama Player 2 tidak boleh kosong!";
+                AudioManager.PlaySFX("sfx_hit.wav");
+                ShakeError(txtPlayer2Name);
                 return;
             }
 
-            // VALIDASI: Nama tidak boleh sama
             if (player1Name.Equals(player2Name, StringComparison.OrdinalIgnoreCase))
             {
-                MessageBox.Show("Nama Player 1 dan Player 2 tidak boleh sama!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                lblError.Text = "⚠️ Nama Player 1 dan Player 2 tidak boleh sama!";
+                AudioManager.PlaySFX("sfx_hit.wav");
+                ShakeError(panelDialog);
                 return;
             }
 
-            // ===== PROSES: Gunakan PlayerRepository.GetOrCreatePlayer() =====
+            lblError.Text = "";
+            AudioManager.PlaySFX("sfx_click.wav");
+
             try
             {
                 PlayerRepository playerRepo = new PlayerRepository();
-
-                // GetOrCreatePlayer() akan cari player di database, kalau tidak ada akan dibuat baru
                 var player1 = playerRepo.GetOrCreatePlayer(player1Name);
                 var player2 = playerRepo.GetOrCreatePlayer(player2Name);
 
-                // SIMPAN ke GameSession (digunakan form selanjutnya)
                 GameSession.Player1Name = player1Name;
                 GameSession.Player2Name = player2Name;
+                GameSession.Player1 = player1;
+                GameSession.Player2 = player2;
 
-                MessageBox.Show($"Pemain terdaftar!\nPlayer 1: {player1Name}\nPlayer 2: {player2Name}", "Sukses", MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-                // NAVIGASI: Buka AnomalySelectionForm
+                // Navigasi ke FormSelectAnomaly (AnomalySelectionForm)
                 AnomalySelectionForm anomalyForm = new AnomalySelectionForm();
-                this.Hide(); // Sembunyikan form ini (tidak ditutup, bisa kembali nanti)
+                this.Hide();
                 anomalyForm.ShowDialog();
-                this.Show(); // Tampilkan kembali jika user batalkan anomalyForm
+                this.Show();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Terjadi error: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                lblError.Text = "❌ Error: " + ex.Message;
+                AudioManager.PlaySFX("sfx_hit.wav");
             }
         }
 
-        /// <summary>
-        /// Event handler ketika klik tombol "Batal"
-        /// Kembali ke MainMenuForm
-        /// </summary>
         private void btnCancel_Click(object sender, EventArgs e)
         {
             AudioManager.PlaySFX("sfx_click.wav");

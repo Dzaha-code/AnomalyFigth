@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.IO;
+using System.Drawing.Drawing2D;
+using System.Linq;
 using System.Windows.Forms;
 using WinFormsApp1.DataAccess;
 using WinFormsApp1.Logic;
@@ -10,323 +11,644 @@ using WinFormsApp1.Models;
 namespace WinFormsApp1
 {
     /// <summary>
-    /// FormBattle.cs - Form utama untuk gameplay battle.
-    /// Menampilkan state dari BattleManager dan handle input pemain.
-    /// Flow: BattleManager update state → RefreshUI() → user lihat perubahan
+    /// FormBattle.cs — Gameplay Battle Arena bergaya Anime RPG (DS/GBA Style).
+    /// Menggunakan System.Windows.Forms.Timer untuk semua animasi visual & efek audio.
     /// </summary>
     public partial class FormBattle : Form
     {
-        private BattleManager battle;
-        private List<Item> itemsP1;
-        private List<Item> itemsP2;
+        private BattleEngine engine = null!;
+        private List<string> battleLogEntries = new List<string>();
+        private System.Windows.Forms.Timer pulseTurnTimer = null!;
+        private bool pulseState = false;
 
         public FormBattle()
         {
             InitializeComponent();
+            SetStyle(ControlStyles.OptimizedDoubleBuffer |
+                     ControlStyles.AllPaintingInWmPaint |
+                     ControlStyles.UserPaint, true);
+
+            InitPulseTimer();
+        }
+
+        private void InitPulseTimer()
+        {
+            // Timer pulse untuk banner giliran (tiap 500ms)
+            pulseTurnTimer = new System.Windows.Forms.Timer { Interval = 500 };
+            pulseTurnTimer.Tick += (s, e) =>
+            {
+                pulseState = !pulseState;
+                lblGiliran.Font = new Font("Segoe UI", pulseState ? 12.5F : 12F, FontStyle.Bold);
+            };
         }
 
         private void FormBattle_Load(object sender, EventArgs e)
         {
-            // Inisialisasi BattleManager
-            battle = new BattleManager();
-            battle.InitBattle();
+            if (GameSession.Player1Anomaly == null || GameSession.Player2Anomaly == null)
+            {
+                MessageBox.Show("Data sesi tidak lengkap!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                this.Close();
+                return;
+            }
 
-            // Ambil referensi items dari GameSession (untuk display info)
-            itemsP1 = GameSession.Player1Items;
-            itemsP2 = GameSession.Player2Items;
+            // Setup UI labels
+            lblP1Name.Text = GameSession.Player1Name;
+            lblP1Anomaly.Text = $"{GameSession.Player1Anomaly.Name} ({GameSession.Player1Anomaly.Role})";
+            lblP2Name.Text = GameSession.Player2Name;
+            lblP2Anomaly.Text = $"{GameSession.Player2Anomaly.Name} ({GameSession.Player2Anomaly.Role})";
 
-            // Load dan display gambar anomaly
-            Image imgP1 = LoadAnomalyImage(GameSession.Player1Anomaly.Name);
-            Image imgP2 = LoadAnomalyImage(GameSession.Player2Anomaly.Name);
+            // Tampilkan Item terpasang
+            lblP1Items.Text = GameSession.Player1Items.Count > 0
+                ? "🎒 " + string.Join(", ", GameSession.Player1Items.Select(i => i.Name))
+                : "🎒 Tanpa Item";
 
+            lblP2Items.Text = GameSession.Player2Items.Count > 0
+                ? "🎒 " + string.Join(", ", GameSession.Player2Items.Select(i => i.Name))
+                : "🎒 Tanpa Item";
+
+            // Load gambar avatar
+            Image? imgP1 = AssetHelper.LoadAnomalyImage(GameSession.Player1Anomaly.SpritePath);
+            Image? imgP2 = AssetHelper.LoadAnomalyImage(GameSession.Player2Anomaly.SpritePath);
             if (imgP1 != null) picP1.Image = imgP1;
             if (imgP2 != null) picP2.Image = imgP2;
 
-            // Initial UI refresh
-            RefreshUI();
+            // Putar BGM Battle
+            AudioManager.PlayBGM("bgm_battle.wav");
 
-            // Log pesan awal
-            AddBattleLog("=== ANOMALY VERSUS BATTLE START ===");
-            AddBattleLog(GameSession.Player1.PlayerName + " menggunakan " + GameSession.Player1Anomaly.Name);
-            AddBattleLog(GameSession.Player2.PlayerName + " menggunakan " + GameSession.Player2Anomaly.Name);
-            AddBattleLog("");
+            // Inisialisasi BattleEngine
+            engine = new BattleEngine();
+            engine.OnBattleLog += Engine_OnBattleLog;
+            engine.OnHPChanged += Engine_OnHPChanged;
+            engine.OnTurnChanged += Engine_OnTurnChanged;
+            engine.OnBattleEnd += Engine_OnBattleEnd;
+            engine.OnPhaseChanged += Engine_OnPhaseChanged;
+            engine.OnStunSkipTurn += Engine_OnStunSkipTurn;
+
+            // Load Skills dari Database
+            SkillRepository skillRepo = new SkillRepository();
+            List<Skill> skills1 = skillRepo.GetSkillsByAnomalyId(GameSession.Player1Anomaly.AnomalyID, GameSession.Player1Anomaly.Role);
+            List<Skill> skills2 = skillRepo.GetSkillsByAnomalyId(GameSession.Player2Anomaly.AnomalyID, GameSession.Player2Anomaly.Role);
+
+            // Start Battle
+            engine.InitBattle(
+                GameSession.Player1Anomaly, skills1, GameSession.Player1Items, GameSession.Player1Name,
+                GameSession.Player2Anomaly, skills2, GameSession.Player2Items, GameSession.Player2Name
+            );
+
+            // Initial UI
+            RefreshHPDisplay(1);
+            RefreshHPDisplay(2);
+            pulseTurnTimer.Start();
         }
 
-        /// <summary>
-        /// Refresh semua UI elements berdasarkan state BattleManager.
-        /// Dipanggil setiap kali ada perubahan state (setelah aksi).
-        /// </summary>
-        private void RefreshUI()
+        protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            // Update HP labels & progress bar P1
-            lblHpP1.Text = "HP: " + battle.HpPlayer1 + " / " + (GameSession.Player1Anomaly.BaseHP);
-            pbHpP1.Value = battle.GetHpPercentage(1);
-            UpdateHpBarColor(pbHpP1, battle.GetHpPercentage(1));
+            pulseTurnTimer.Stop();
+            pulseTurnTimer.Dispose();
+            base.OnFormClosing(e);
+        }
 
-            // Update HP labels & progress bar P2
-            lblHpP2.Text = "HP: " + battle.HpPlayer2 + " / " + (GameSession.Player2Anomaly.BaseHP);
-            pbHpP2.Value = battle.GetHpPercentage(2);
-            UpdateHpBarColor(pbHpP2, battle.GetHpPercentage(2));
+        // ===== EVENT HANDLERS DARI BATTLEENGINE =====
 
-            // Update current turn label
-            int currentPlayer = battle.CurrentTurn;
-            string playerName = (currentPlayer == 1) ? GameSession.Player1.PlayerName : GameSession.Player2.PlayerName;
-            lblGiliran.Text = "⏳ Giliran: " + playerName + " (Player " + currentPlayer + ")";
+        private void Engine_OnBattleLog(string message)
+        {
+            battleLogEntries.Add(message);
+            lstBattleLog.Items.Add(message);
+            lstBattleLog.TopIndex = lstBattleLog.Items.Count - 1; // Auto-scroll
+        }
 
-            // Update skill combo & dropdown
-            RefreshSkillCombo(currentPlayer);
+        private void Engine_OnHPChanged(int playerNum, int newHP, int maxHP)
+        {
+            ProgressBar bar = (playerNum == 1) ? pbHpP1 : pbHpP2;
+            Label lbl = (playerNum == 1) ? lblHpP1 : lblHpP2;
 
-            // Update item combo & dropdown
-            RefreshItemCombo(currentPlayer);
+            lbl.Text = $"HP: {newHP} / {maxHP}";
 
-            // Enable/disable action buttons (hanya enable untuk pemain yang sekarang giliran)
-            // Sebenarnya semua button bisa di-click, tapi hanya akan akurat untuk player yang giliran
-            // Untuk simplicity, kita enable semua ja biar user bisa klik kapan saja
+            int targetPct = (maxHP > 0) ? Math.Max(0, Math.Min(100, (int)Math.Round((double)newHP * 100 / maxHP))) : 0;
 
-            // Cek pemenang
-            int winner = battle.CheckWinner();
-            if (winner != 0)
+            // Animasi HP bar turun perlahan
+            AnimateHpBar(bar, targetPct);
+        }
+
+        private void Engine_OnTurnChanged(int playerNum)
+        {
+            UpdateTurnVisuals(playerNum);
+            RefreshSkillCombo(playerNum);
+            RefreshItemCombo(playerNum);
+            RefreshStatusLabels();
+            EnableActions(true);
+        }
+
+        private void Engine_OnPhaseChanged()
+        {
+            if (engine.CurrentPhase == BattlePhase.ResolvingAction || engine.CurrentPhase == BattlePhase.BattleOver)
             {
-                DisableAllActions();
-                ShowResult(winner);
+                EnableActions(false);
             }
         }
 
+        private void Engine_OnStunSkipTurn(int playerNum)
+        {
+            AudioManager.PlaySFX("sfx_hit.wav");
+            ShakeControl((playerNum == 1) ? picP1 : picP2);
+            RefreshStatusLabels();
+        }
+
+        private void Engine_OnBattleEnd(int winner, string summary)
+        {
+            EnableActions(false);
+            pulseTurnTimer.Stop();
+
+            AudioManager.PlaySFX("sfx_victory.wav");
+            AudioManager.PlayBGM("bgm_selection.wav");
+
+            SaveMatchResult(winner);
+
+            // Buka Popup FormResult dengan animasi Zoom RPG
+            string winnerName = (winner == 1) ? GameSession.Player1Name : GameSession.Player2Name;
+            string winnerAnomaly = (winner == 1) ? GameSession.Player1Anomaly!.Name : GameSession.Player2Anomaly!.Name;
+
+            FormResult resultDialog = new FormResult(winnerName, winnerAnomaly, summary);
+            resultDialog.ShowDialog();
+
+            AudioManager.StopBGM();
+            GameSession.ResetSession();
+            this.Close();
+        }
+
+        // ===== SISTEM ANIMASI BERBASIS TIMER =====
+
         /// <summary>
-        /// Refresh ComboBox Skill dengan list skill pemain yang sekarang giliran.
-        /// Tambahkan info cooldown di display text.
+        /// 1. Animasi HP Bar turun/naik perlahan.
         /// </summary>
+        private void AnimateHpBar(ProgressBar bar, int targetValue)
+        {
+            System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer { Interval = 16 };
+            timer.Tick += (s, e) =>
+            {
+                if (bar.Value > targetValue)
+                {
+                    bar.Value = Math.Max(targetValue, bar.Value - 2);
+                }
+                else if (bar.Value < targetValue)
+                {
+                    bar.Value = Math.Min(targetValue, bar.Value + 2);
+                }
+                else
+                {
+                    timer.Stop();
+                    timer.Dispose();
+                }
+            };
+            timer.Start();
+        }
+
+        /// <summary>
+        /// 2. Animasi Damage Floating Text di atas karakter.
+        /// </summary>
+        private void ShowDamageNumber(string text, Point startPos, Color color)
+        {
+            Label dmgLabel = new Label
+            {
+                Text = text,
+                ForeColor = color,
+                Font = new Font("Consolas", 16F, FontStyle.Bold),
+                BackColor = Color.Transparent,
+                AutoSize = true,
+                Location = startPos
+            };
+
+            this.Controls.Add(dmgLabel);
+            dmgLabel.BringToFront();
+
+            int elapsed = 0;
+            System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer { Interval = 16 };
+            timer.Tick += (s, e) =>
+            {
+                elapsed += 16;
+                dmgLabel.Top -= 2; // Bergerak ke atas
+
+                if (elapsed >= 500) // 500ms durasi
+                {
+                    timer.Stop();
+                    timer.Dispose();
+                    this.Controls.Remove(dmgLabel);
+                    dmgLabel.Dispose();
+                }
+            };
+            timer.Start();
+        }
+
+        /// <summary>
+        /// 3. Animasi Shake (Getar) pada PictureBox atau Panel saat terkena damage.
+        /// </summary>
+        private void ShakeControl(Control control, int durationMs = 300)
+        {
+            Point originalPos = control.Location;
+            int elapsed = 0;
+            System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer { Interval = 16 };
+            timer.Tick += (s, e) =>
+            {
+                elapsed += 16;
+                int offset = (elapsed % 60 < 30) ? 6 : -6;
+                control.Location = new Point(originalPos.X + offset, originalPos.Y);
+
+                if (elapsed >= durationMs)
+                {
+                    control.Location = originalPos;
+                    timer.Stop();
+                    timer.Dispose();
+                }
+            };
+            timer.Start();
+        }
+
+        // ===== VISUAL TURN INDICATOR =====
+
+        private void UpdateTurnVisuals(int activePlayerNum)
+        {
+            if (activePlayerNum == 1)
+            {
+                lblP1TurnBadge.Text = "🔥 GILIRAN KAMU!";
+                lblP1TurnBadge.BackColor = Color.FromArgb(245, 166, 35); // Gold
+                lblP1TurnBadge.ForeColor = Color.FromArgb(26, 26, 46);
+
+                lblP2TurnBadge.Text = "⏳ MENUNGGU";
+                lblP2TurnBadge.BackColor = Color.FromArgb(15, 52, 96);
+                lblP2TurnBadge.ForeColor = Color.FromArgb(168, 178, 216);
+
+                lblGiliran.Text = $"⚔️ GILIRAN: {GameSession.Player1Name.ToUpper()} (P1) ⚔️";
+                lblGiliran.BackColor = Color.FromArgb(233, 69, 96); // #E94560
+
+                lblActionTitle.Text = $"🎮 Aksi untuk: {GameSession.Player1Name} (Player 1)";
+            }
+            else
+            {
+                lblP2TurnBadge.Text = "🔥 GILIRAN KAMU!";
+                lblP2TurnBadge.BackColor = Color.FromArgb(245, 166, 35); // Gold
+                lblP2TurnBadge.ForeColor = Color.FromArgb(26, 26, 46);
+
+                lblP1TurnBadge.Text = "⏳ MENUNGGU";
+                lblP1TurnBadge.BackColor = Color.FromArgb(15, 52, 96);
+                lblP1TurnBadge.ForeColor = Color.FromArgb(168, 178, 216);
+
+                lblGiliran.Text = $"⚔️ GILIRAN: {GameSession.Player2Name.ToUpper()} (P2) ⚔️";
+                lblGiliran.BackColor = Color.FromArgb(155, 89, 182); // Purple
+
+                lblActionTitle.Text = $"🎮 Aksi untuk: {GameSession.Player2Name} (Player 2)";
+            }
+
+            panelP1.Invalidate();
+            panelP2.Invalidate();
+            picP1.Invalidate();
+            picP2.Invalidate();
+        }
+
+        // ===== CUSTOM DRAWING BATTLE LOG (COLOR-CODED) =====
+
+        private void lstBattleLog_DrawItem(object sender, DrawItemEventArgs e)
+        {
+            if (e.Index < 0 || e.Index >= battleLogEntries.Count) return;
+
+            Graphics g = e.Graphics;
+            string text = battleLogEntries[e.Index];
+
+            // Background item log
+            using (SolidBrush bgBrush = new SolidBrush(Color.FromArgb(10, 10, 26))) // #0A0A1A
+            {
+                g.FillRectangle(bgBrush, e.Bounds);
+            }
+
+            // Tentukan warna teks berdasarkan aksi
+            Color textColor = Color.FromArgb(234, 234, 234); // Default putih
+
+            if (text.Contains("⚔") || text.Contains("Damage") || text.Contains("menyerang"))
+            {
+                textColor = Color.FromArgb(231, 76, 60); // Merah (#E74C3C)
+            }
+            else if (text.Contains("✨") || text.Contains("skill") || text.Contains("POISON") || text.Contains("STUN"))
+            {
+                textColor = Color.FromArgb(155, 89, 182); // Ungu (#9B59B6)
+            }
+            else if (text.Contains("🛡") || text.Contains("Defend") || text.Contains("Shield"))
+            {
+                textColor = Color.FromArgb(52, 152, 219); // Biru (#3498DB)
+            }
+            else if (text.Contains("🎒") || text.Contains("Item") || text.Contains("Memulihkan") || text.Contains("Regen") || text.Contains("💚"))
+            {
+                textColor = Color.FromArgb(46, 204, 113); // Hijau (#2ECC71)
+            }
+            else if (text.Contains("===") || text.Contains("Turn") || text.Contains("Giliran") || text.Contains("🏆"))
+            {
+                textColor = Color.FromArgb(245, 166, 35); // Gold (#F5A623)
+            }
+
+            using (Font font = new Font("Consolas", 9F, text.Contains("===") ? FontStyle.Bold : FontStyle.Regular))
+            {
+                TextRenderer.DrawText(g, text, font, new Point(e.Bounds.X + 4, e.Bounds.Y + 2), textColor);
+            }
+        }
+
+        // ===== CUSTOM PAINT: BACKGROUND & PANELS =====
+
+        private void FormBattle_Paint(object sender, PaintEventArgs e)
+        {
+            using (LinearGradientBrush brush = new LinearGradientBrush(
+                ClientRectangle,
+                Color.FromArgb(26, 26, 46),
+                Color.FromArgb(15, 52, 96),
+                LinearGradientMode.Vertical))
+            {
+                e.Graphics.FillRectangle(brush, ClientRectangle);
+            }
+        }
+
+        private void panelP1_Paint(object sender, PaintEventArgs e) => DrawFighterPanel(e.Graphics, panelP1, engine?.CurrentTurn == 1);
+        private void panelP2_Paint(object sender, PaintEventArgs e) => DrawFighterPanel(e.Graphics, panelP2, engine?.CurrentTurn == 2);
+        private void panelCenter_Paint(object sender, PaintEventArgs e) => DrawCenterPanel(e.Graphics, panelCenter);
+        private void panelAction_Paint(object sender, PaintEventArgs e) => DrawActionPanel(e.Graphics, panelAction);
+
+        private void DrawFighterPanel(Graphics g, Panel panel, bool isActive)
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            Rectangle rect = new Rectangle(0, 0, panel.Width - 1, panel.Height - 1);
+
+            using (LinearGradientBrush brush = new LinearGradientBrush(
+                rect,
+                Color.FromArgb(22, 33, 62),
+                Color.FromArgb(15, 52, 96),
+                LinearGradientMode.Vertical))
+            {
+                g.FillRectangle(brush, rect);
+            }
+
+            // Border emas jika giliran aktif
+            Color borderColor = isActive ? Color.FromArgb(245, 166, 35) : Color.FromArgb(15, 52, 96);
+            float borderWidth = isActive ? 3f : 1.5f;
+
+            using (Pen pen = new Pen(borderColor, borderWidth))
+            {
+                g.DrawRectangle(pen, rect);
+            }
+
+            // Accent Bar di sisi kiri
+            using (SolidBrush accent = new SolidBrush(isActive ? Color.FromArgb(245, 166, 35) : Color.FromArgb(233, 69, 96)))
+            {
+                g.FillRectangle(accent, 0, 0, 4, panel.Height);
+            }
+        }
+
+        private void picP1_Paint(object sender, PaintEventArgs e) => DrawAvatarBorder(e.Graphics, picP1, engine?.CurrentTurn == 1);
+        private void picP2_Paint(object sender, PaintEventArgs e) => DrawAvatarBorder(e.Graphics, picP2, engine?.CurrentTurn == 2);
+
+        private void DrawAvatarBorder(Graphics g, PictureBox pic, bool isActive)
+        {
+            Color color = isActive ? Color.FromArgb(245, 166, 35) : Color.FromArgb(15, 52, 96);
+            using (Pen pen = new Pen(color, isActive ? 3 : 1))
+            {
+                g.DrawRectangle(pen, 0, 0, pic.Width - 1, pic.Height - 1);
+            }
+        }
+
+        private void DrawCenterPanel(Graphics g, Panel panel)
+        {
+            Rectangle rect = new Rectangle(0, 0, panel.Width - 1, panel.Height - 1);
+            using (Pen pen = new Pen(Color.FromArgb(15, 52, 96), 2))
+            {
+                g.DrawRectangle(pen, rect);
+            }
+        }
+
+        private void DrawActionPanel(Graphics g, Panel panel)
+        {
+            Rectangle rect = new Rectangle(0, 0, panel.Width - 1, panel.Height - 1);
+            using (LinearGradientBrush brush = new LinearGradientBrush(
+                rect,
+                Color.FromArgb(22, 33, 62),
+                Color.FromArgb(15, 52, 96),
+                LinearGradientMode.Vertical))
+            {
+                g.FillRectangle(brush, rect);
+            }
+            using (Pen pen = new Pen(Color.FromArgb(15, 52, 96), 2))
+            {
+                g.DrawRectangle(pen, rect);
+            }
+        }
+
+        // ===== UI HELPERS =====
+
+        private void RefreshHPDisplay(int playerNum)
+        {
+            FighterState fighter = (playerNum == 1) ? engine.Fighter1 : engine.Fighter2;
+            Label lblHp = (playerNum == 1) ? lblHpP1 : lblHpP2;
+            ProgressBar pbHp = (playerNum == 1) ? pbHpP1 : pbHpP2;
+
+            lblHp.Text = $"HP: {fighter.CurrentHP} / {fighter.MaxHP}";
+            int pct = engine.GetHpPercentage(playerNum);
+            AnimateHpBar(pbHp, pct);
+        }
+
         private void RefreshSkillCombo(int playerNum)
         {
-            List<Skill> skills = (playerNum == 1) ? battle.SkillsP1 : battle.SkillsP2;
+            FighterState fighter = (playerNum == 1) ? engine.Fighter1 : engine.Fighter2;
             cmbSkill.Items.Clear();
-            cmbSkill.DisplayMember = "DisplayText";
-            cmbSkill.ValueMember = "Skill";
 
-            for (int i = 0; i < skills.Count; i++)
+            for (int i = 0; i < fighter.Skills.Count; i++)
             {
-                Skill skill = skills[i];
-                string displayText = skill.Name + " (DMG: " + skill.Damage + ")";
+                Skill skill = fighter.Skills[i];
+                string display = $"{skill.Name} ({skill.SkillType}, {skill.Power:F1}x)";
 
-                if (battle.IsSkillOnCooldown(playerNum, i))
+                if (engine.IsSkillOnCooldown(playerNum, i))
                 {
-                    int cdRemaining = battle.GetSkillCooldownRemaining(playerNum, i);
-                    displayText += " [CD: " + cdRemaining + " turn]";
+                    int cd = engine.GetSkillCooldownRemaining(playerNum, i);
+                    display += $" [CD: {cd}t]";
                 }
 
-                cmbSkill.Items.Add(new { DisplayText = displayText, Skill = skill, Index = i });
+                cmbSkill.Items.Add(display);
             }
 
             if (cmbSkill.Items.Count > 0)
                 cmbSkill.SelectedIndex = 0;
         }
 
-        /// <summary>
-        /// Refresh ComboBox Item dengan list item pemain yang sekarang giliran.
-        /// Tambahkan info cooldown di display text.
-        /// </summary>
         private void RefreshItemCombo(int playerNum)
         {
-            List<Item> items = (playerNum == 1) ? itemsP1 : itemsP2;
+            FighterState fighter = (playerNum == 1) ? engine.Fighter1 : engine.Fighter2;
             cmbItem.Items.Clear();
-            cmbItem.DisplayMember = "DisplayText";
-            cmbItem.ValueMember = "Item";
 
-            for (int i = 0; i < items.Count; i++)
+            for (int i = 0; i < fighter.Items.Count; i++)
             {
-                Item item = items[i];
-                string displayText = item.Name + " (" + item.EffectType + ")";
+                Item item = fighter.Items[i];
+                string unit = item.IsPercentage ? "%" : "";
+                string display = $"{item.Name} (+{item.EffectValue}{unit} {item.EffectType})";
 
-                if (battle.IsItemOnCooldown(playerNum, i))
+                if (engine.IsItemOnCooldown(playerNum, i))
                 {
-                    int cdRemaining = battle.GetItemCooldownRemaining(playerNum, i);
-                    displayText += " [CD: " + cdRemaining + " turn]";
+                    int cd = engine.GetItemCooldownRemaining(playerNum, i);
+                    display += $" [CD: {cd}t]";
                 }
 
-                cmbItem.Items.Add(new { DisplayText = displayText, Item = item, Index = i });
+                cmbItem.Items.Add(display);
             }
 
             if (cmbItem.Items.Count > 0)
                 cmbItem.SelectedIndex = 0;
         }
 
-        /// <summary>
-        /// Update warna progress bar HP berdasarkan persentase.
-        /// > 50% = hijau, 25-50% = kuning, < 25% = merah
-        /// </summary>
-        private void UpdateHpBarColor(ProgressBar bar, int percentage)
+        private void RefreshStatusLabels()
         {
-            if (percentage > 50)
-                bar.ForeColor = Color.LimeGreen;
-            else if (percentage >= 25)
-                bar.ForeColor = Color.Yellow;
-            else
-                bar.ForeColor = Color.Red;
+            lblP1Status.Text = BuildStatusText(engine.Fighter1);
+            lblP2Status.Text = BuildStatusText(engine.Fighter2);
         }
 
-        /// <summary>
-        /// Tambah text ke battle log ListBox dan auto-scroll ke bawah.
-        /// </summary>
-        private void AddBattleLog(string message)
+        private string BuildStatusText(FighterState fighter)
         {
-            lstBattleLog.Items.Add(message);
-            lstBattleLog.TopIndex = lstBattleLog.Items.Count - 1; // Auto-scroll
+            List<string> statuses = new List<string>();
+
+            if (fighter.IsDefending) statuses.Add("🛡 Defending (50% Dmg Red.)");
+            if (fighter.HasPoison) statuses.Add($"☠ Poison ({fighter.PoisonTurns} turn)");
+            if (fighter.HasStun) statuses.Add("⚡ Stunned (Skip turn)");
+            if (fighter.ShieldHP > 0) statuses.Add($"🔰 Shield: {fighter.ShieldHP} HP");
+            if (fighter.ATKBuffTurns > 0)
+            {
+                string prefix = fighter.ATKBuffValue >= 0 ? "💪 ATK+" : "🔻 ATK";
+                statuses.Add($"{prefix}{fighter.ATKBuffValue} ({fighter.ATKBuffTurns} turn)");
+            }
+            if (fighter.DEFBuffTurns > 0)
+            {
+                string prefix = fighter.DEFBuffValue >= 0 ? "💪 DEF+" : "🔻 DEF";
+                statuses.Add($"{prefix}{fighter.DEFBuffValue} ({fighter.DEFBuffTurns} turn)");
+            }
+
+            return string.Join("\n", statuses);
         }
 
-        /// <summary>
-        /// Load gambar Anomaly dari folder Assets/Images.
-        /// Nama file = Anomaly.Name (case-sensitive).
-        /// Fallback ke placeholder.png jika tidak ditemukan.
-        /// </summary>
-        private Image LoadAnomalyImage(string anomalyName)
+        private void EnableActions(bool enabled)
+        {
+            btnAttack.Enabled = enabled;
+            btnSkill.Enabled = enabled && cmbSkill.Items.Count > 0;
+            btnDefend.Enabled = enabled;
+            cmbSkill.Enabled = enabled && cmbSkill.Items.Count > 0;
+            btnItem.Enabled = enabled && cmbItem.Items.Count > 0;
+            cmbItem.Enabled = enabled && cmbItem.Items.Count > 0;
+        }
+
+        private void SaveMatchResult(int winner)
         {
             try
             {
-                // Ganti spasi dengan underscore untuk nama file
-                string safeName = anomalyName.Replace(" ", "_");
-                string imagePath = Path.Combine(
-                    Application.StartupPath,
-                    "Assets", "Images", safeName + ".png"
-                );
+                int p1Id = GameSession.Player1?.PlayerID ?? 1;
+                int p2Id = GameSession.Player2?.PlayerID ?? 2;
+                int winnerId = (winner == 1) ? p1Id : p2Id;
 
-                if (File.Exists(imagePath))
-                    return Image.FromFile(imagePath);
-                else
-                {
-                    // Fallback ke placeholder
-                    string placeholder = Path.Combine(
-                        Application.StartupPath,
-                        "Assets", "Images", "placeholder.png"
-                    );
-                    if (File.Exists(placeholder))
-                        return Image.FromFile(placeholder);
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Error loading image: " + ex.Message);
-            }
+                int anom1Id = GameSession.Player1Anomaly?.AnomalyID ?? 1;
+                int anom2Id = GameSession.Player2Anomaly?.AnomalyID ?? 2;
 
-            return null;
-        }
-
-        /// <summary>
-        /// Disable semua tombol aksi (saat battle selesai).
-        /// </summary>
-        private void DisableAllActions()
-        {
-            btnAttack.Enabled = false;
-            btnSkill.Enabled = false;
-            btnDefend.Enabled = false;
-            btnItem.Enabled = false;
-        }
-
-        /// <summary>
-        /// Tampilkan hasil battle dan simpan ke database.
-        /// winner: 1 = Player 1 menang, 2 = Player 2 menang
-        /// </summary>
-        private void ShowResult(int winner)
-        {
-            string winnerName = (winner == 1) ? GameSession.Player1.PlayerName : GameSession.Player2.PlayerName;
-            string loserName = (winner == 1) ? GameSession.Player2.PlayerName : GameSession.Player1.PlayerName;
-            string winnerAnomalyName = (winner == 1) ? GameSession.Player1Anomaly.Name : GameSession.Player2Anomaly.Name;
-            string loserAnomalyName = (winner == 1) ? GameSession.Player2Anomaly.Name : GameSession.Player1Anomaly.Name;
-
-            int winnerId = (winner == 1) ? GameSession.Player1.PlayerID : GameSession.Player2.PlayerID;
-            int loserId = (winner == 1) ? GameSession.Player2.PlayerID : GameSession.Player1.PlayerID;
-
-            string resultMessage = "🏆 " + winnerName + " MENANG!\n\n";
-            resultMessage += winnerAnomalyName + " mengalahkan " + loserAnomalyName;
-
-            AddBattleLog("");
-            AddBattleLog("=== BATTLE END ===");
-            AddBattleLog(resultMessage);
-
-            // Simpan ke database
-            try
-            {
-                // Buat MatchHistory record
                 MatchHistory match = new MatchHistory
                 {
-                    WinnerPlayerID = winnerId,
-                    LoserPlayerID = loserId,
-                    WinnerAnomalyName = winnerAnomalyName,
-                    LoserAnomalyName = loserAnomalyName,
-                    PlayedAt = DateTime.Now
+                    Player1ID = p1Id,
+                    Player2ID = p2Id,
+                    Anomaly1ID = anom1Id,
+                    Anomaly2ID = anom2Id,
+                    WinnerID = winnerId,
+                    MatchDate = DateTime.Now,
+                    Notes = $"Total Turn: {engine.TurnNumber}"
                 };
 
-                // Simpan match ke database
                 MatchHistoryRepository matchRepo = new MatchHistoryRepository();
                 matchRepo.AddMatch(match);
 
-                // Update stats pemain
                 PlayerRepository playerRepo = new PlayerRepository();
                 playerRepo.UpdateStats(winnerId, isWin: true);
-                playerRepo.UpdateStats(loserId, isWin: false);
-
-                AddBattleLog("✓ Match history saved to database");
+                playerRepo.UpdateStats((winner == 1) ? p2Id : p1Id, isWin: false);
             }
-            catch (Exception ex)
-            {
-                AddBattleLog("✗ Error saving to database: " + ex.Message);
-            }
-
-            // Tampilkan dialog hasil
-            MessageBox.Show(resultMessage, "Battle Result", MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-            // Reset session & kembali ke menu utama
-            GameSession.ResetSession();
-            this.Close();
+            catch { }
         }
 
-        // ===== EVENT HANDLERS =====
+        // ===== BUTTON HANDLERS DENGAN ANIMASI DAN SFX =====
 
         private void btnAttack_Click(object sender, EventArgs e)
         {
-            string result = battle.DoAttack();
-            AddBattleLog(result);
-            RefreshUI();
+            int targetPlayerNum = (engine.CurrentTurn == 1) ? 2 : 1;
+            PictureBox targetPic = (targetPlayerNum == 1) ? picP1 : picP2;
+
+            AudioManager.PlaySFX("sfx_attack.wav");
+            ShakeControl(targetPic);
+
+            // Tampilkan floating damage
+            Point startPos = new Point((targetPic.Parent?.Left ?? 0) + targetPic.Left + 20, (targetPic.Parent?.Top ?? 0) + targetPic.Top + 20);
+            ShowDamageNumber("-DMG", startPos, Color.FromArgb(231, 76, 60));
+
+            engine.DoAttack();
         }
 
         private void btnSkill_Click(object sender, EventArgs e)
         {
             if (cmbSkill.SelectedIndex < 0)
             {
-                MessageBox.Show("Pilih skill terlebih dahulu!", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("Pilih skill terlebih dahulu!", "Peringatan", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            // Ambil index skill dari combo box
-            dynamic selectedItem = cmbSkill.SelectedItem;
-            int skillIndex = selectedItem.Index;
+            int skillIndex = cmbSkill.SelectedIndex;
+            if (engine.IsSkillOnCooldown(engine.CurrentTurn, skillIndex))
+            {
+                MessageBox.Show("Skill masih cooldown!", "Peringatan", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
 
-            string result = battle.DoSkill(skillIndex);
-            AddBattleLog(result);
-            RefreshUI();
+            int targetPlayerNum = (engine.CurrentTurn == 1) ? 2 : 1;
+            PictureBox targetPic = (targetPlayerNum == 1) ? picP1 : picP2;
+
+            AudioManager.PlaySFX("sfx_skill.wav");
+
+            // Efek getar sihir
+            ShakeControl(targetPic);
+
+            Point startPos = new Point((targetPic.Parent?.Left ?? 0) + targetPic.Left + 20, (targetPic.Parent?.Top ?? 0) + targetPic.Top + 20);
+            ShowDamageNumber("✨SKILL", startPos, Color.FromArgb(155, 89, 182));
+
+            engine.DoSkill(skillIndex);
         }
 
         private void btnDefend_Click(object sender, EventArgs e)
         {
-            string result = battle.DoDefend();
-            AddBattleLog(result);
-            RefreshUI();
+            int currentPlayerNum = engine.CurrentTurn;
+            PictureBox currentPic = (currentPlayerNum == 1) ? picP1 : picP2;
+
+            AudioManager.PlaySFX("sfx_defend.wav");
+            ShakeControl(currentPic, 200);
+
+            Point startPos = new Point((currentPic.Parent?.Left ?? 0) + currentPic.Left + 20, (currentPic.Parent?.Top ?? 0) + currentPic.Top + 20);
+            ShowDamageNumber("🛡️DEFEND", startPos, Color.FromArgb(52, 152, 219));
+
+            engine.DoDefend();
         }
 
         private void btnItem_Click(object sender, EventArgs e)
         {
             if (cmbItem.SelectedIndex < 0)
             {
-                MessageBox.Show("Pilih item terlebih dahulu!", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("Pilih item terlebih dahulu!", "Peringatan", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            // Ambil index item dari combo box
-            dynamic selectedItem = cmbItem.SelectedItem;
-            int itemIndex = selectedItem.Index;
+            int itemIndex = cmbItem.SelectedIndex;
+            if (engine.IsItemOnCooldown(engine.CurrentTurn, itemIndex))
+            {
+                MessageBox.Show("Item masih cooldown!", "Peringatan", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
 
-            string result = battle.DoItem(itemIndex);
-            AddBattleLog(result);
-            RefreshUI();
+            PictureBox currentPic = (engine.CurrentTurn == 1) ? picP1 : picP2;
+
+            AudioManager.PlaySFX("sfx_item.wav");
+
+            Point startPos = new Point((currentPic.Parent?.Left ?? 0) + currentPic.Left + 20, (currentPic.Parent?.Top ?? 0) + currentPic.Top + 20);
+            ShowDamageNumber("💚ITEM", startPos, Color.FromArgb(46, 204, 113));
+
+            engine.DoItem(itemIndex);
         }
     }
 }

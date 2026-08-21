@@ -1,3 +1,4 @@
+using System;
 using MySql.Data.MySqlClient;
 using WinFormsApp1.Models;
 
@@ -5,7 +6,8 @@ namespace WinFormsApp1.DataAccess
 {
     /// <summary>
     /// PlayerRepository.cs — Repository untuk operasi CRUD tabel Player.
-    /// Note: Database schema uses TotalMatches instead of TotalLosses.
+    /// Pola standar: PlayerRepository repo = new PlayerRepository();
+    ///              Player p = repo.GetOrCreatePlayer("Budi");
     /// </summary>
     public class PlayerRepository
     {
@@ -23,30 +25,26 @@ namespace WinFormsApp1.DataAccess
                 string selectQuery = "SELECT * FROM Player WHERE PlayerName = @name";
                 MySqlCommand selectCmd = new MySqlCommand(selectQuery, conn);
                 selectCmd.Parameters.AddWithValue("@name", playerName);
-                MySqlDataReader reader = selectCmd.ExecuteReader();
-
-                if (reader.Read())
+                using (MySqlDataReader reader = selectCmd.ExecuteReader())
                 {
-                    Player existing = new Player
+                    if (reader.Read())
                     {
-                        PlayerID = reader.GetInt32("PlayerID"),
-                        PlayerName = reader.GetString("PlayerName"),
-                        TotalWins = reader.GetInt32("TotalWins"),
-                        TotalMatches = reader.GetInt32("TotalMatches")
-                    };
-                    reader.Close();
-                    return existing;
+                        return new Player
+                        {
+                            PlayerID = reader.GetInt32("PlayerID"),
+                            PlayerName = reader.GetString("PlayerName"),
+                            TotalWins = reader.GetInt32("TotalWins"),
+                            TotalMatches = reader.GetInt32("TotalMatches")
+                        };
+                    }
                 }
 
-                reader.Close();
-
-                // Tidak ditemukan → buat baru (TotalWins=0, TotalMatches=0)
+                // Tidak ditemukan → buat baru
                 string insertQuery = "INSERT INTO Player (PlayerName, TotalWins, TotalMatches) VALUES (@name, 0, 0)";
                 MySqlCommand insertCmd = new MySqlCommand(insertQuery, conn);
                 insertCmd.Parameters.AddWithValue("@name", playerName);
                 insertCmd.ExecuteNonQuery();
 
-                // Return player baru
                 return new Player
                 {
                     PlayerID = (int)insertCmd.LastInsertedId,
@@ -58,32 +56,27 @@ namespace WinFormsApp1.DataAccess
         }
 
         /// <summary>
-        /// Update stats untuk player.
-        /// If isWin == true: increment TotalWins and TotalMatches.
-        /// If isWin == false: increment TotalMatches only.
-        /// This matches database schema (TotalMatches column exists).
+        /// Update stats untuk player (TotalMatches + 1, TotalWins + 1 jika menang).
         /// </summary>
         public void UpdateStats(int playerId, bool isWin)
         {
-            using (var conn = DBConnection.GetConnection())
+            try
             {
-                conn.Open();
-                string query;
-
-                if (isWin)
+                using (var conn = DBConnection.GetConnection())
                 {
-                    // Winner: increment wins AND total matches
-                    query = "UPDATE Player SET TotalWins = TotalWins + 1, TotalMatches = TotalMatches + 1 WHERE PlayerID = @id";
-                }
-                else
-                {
-                    // Loser: increment total matches only
-                    query = "UPDATE Player SET TotalMatches = TotalMatches + 1 WHERE PlayerID = @id";
-                }
+                    conn.Open();
+                    string query = isWin
+                        ? "UPDATE Player SET TotalWins = TotalWins + 1, TotalMatches = TotalMatches + 1 WHERE PlayerID = @id"
+                        : "UPDATE Player SET TotalMatches = TotalMatches + 1 WHERE PlayerID = @id";
 
-                MySqlCommand cmd = new MySqlCommand(query, conn);
-                cmd.Parameters.AddWithValue("@id", playerId);
-                cmd.ExecuteNonQuery();
+                    MySqlCommand cmd = new MySqlCommand(query, conn);
+                    cmd.Parameters.AddWithValue("@id", playerId);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[PlayerRepository.UpdateStats Error] {ex.Message}");
             }
         }
     }

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using WinFormsApp1.Models;
 
 namespace WinFormsApp1
@@ -14,12 +15,16 @@ namespace WinFormsApp1
     public static class GameSession
     {
         // ===== DATA PEMAIN =====
-        public static string Player1Name { get; set; }
-        public static string Player2Name { get; set; }
+        public static string Player1Name { get; set; } = "";
+        public static string Player2Name { get; set; } = "";
+
+        // ===== OBJEK PLAYER (dari database, berisi PlayerID) =====
+        public static Player? Player1 { get; set; }
+        public static Player? Player2 { get; set; }
 
         // ===== ANOMALY YANG DIPILIH =====
-        public static Anomaly Player1Anomaly { get; set; }
-        public static Anomaly Player2Anomaly { get; set; }
+        public static Anomaly? Player1Anomaly { get; set; }
+        public static Anomaly? Player2Anomaly { get; set; }
 
         // ===== ITEM YANG DIPILIH (2 per pemain) =====
         public static List<Item> Player1Items { get; set; } = new List<Item>();
@@ -33,8 +38,10 @@ namespace WinFormsApp1
         /// </summary>
         public static void ResetSession()
         {
-            Player1Name = null;
-            Player2Name = null;
+            Player1Name = "";
+            Player2Name = "";
+            Player1 = null;
+            Player2 = null;
             Player1Anomaly = null;
             Player2Anomaly = null;
             Player1Items.Clear();
